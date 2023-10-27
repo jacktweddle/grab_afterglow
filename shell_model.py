@@ -1,4 +1,4 @@
-# TOMORROW (25/10) - WRITE UP GENERAL WIND MODEL, ADD SSC + SYNC SPECTRA, INTRODUCE KN CUTOFF, MAKE LIGHTCURVES
+# TOMORROW (27/10) - LOOK AT EIC + PROTON SYNC
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -8,7 +8,7 @@ from scipy.optimize import fsolve
 
 # Define constants and initial conditions
 
-N = 500000  # Number of timesteps
+N = 50000  # Number of timesteps
 t_engine_min = 24*60*60  # ENGINE FRAME time at start of simulation in s
 t_engine_max = 30*24*60*60  # ENGINE FRAME time at end of simulation in s
 
@@ -157,7 +157,6 @@ nu_m_obs_spl = CubicSpline(t_obs_vals, nu_m_obs_vals)
 nu_c_obs_spl = CubicSpline(t_obs_vals, nu_c_obs_vals)
 nu_max_obs_spl = CubicSpline(t_obs_vals, nu_max_obs_vals)
 
-'''
 # Determine if inverse Compton is going to be relevant and define the Compton Y-param in the
 # fast cooling regime
 if epsilon_e > epsilon_B:
@@ -192,7 +191,6 @@ if epsilon_e > epsilon_B:
     nu_m_obs_ic_spl = CubicSpline(t_obs_vals, nu_m_obs_ic_vals)
     nu_c_obs_ic_spl = CubicSpline(t_obs_vals, nu_c_obs_ic_vals)
     nu_max_obs_ic_spl = CubicSpline(t_obs_vals, nu_max_obs_ic_vals)
-'''
 
 # Plotting
 
@@ -318,7 +316,7 @@ for i in range(0, len(t_obs_vals)):
             if epsilon_e > epsilon_B:
                 nu_kn = (2*gamma_vals[i]*m_e*c**2) / (gamma_c_vals[i]*h)  # Frequency of the KN cutoff in the observer frame in the fast cooling regime
 
-                low_freq_ic_vals = np.geomspace(1E10*4*gamma_m_vals[i]**2, nu_c_obs_ic_vals[i], 10000)
+                low_freq_ic_vals = np.geomspace(1E10*4*gamma_c_vals[i]**2, nu_c_obs_ic_vals[i], 10000)
                 middle_freq_ic_vals = np.geomspace(nu_c_obs_ic_vals[i], nu_m_obs_ic_vals[i], 10000)
                 high_freq_ic_vals = np.geomspace(nu_m_obs_ic_vals[i], nu_max_obs_ic_vals[i], 10000)
 
@@ -384,10 +382,10 @@ for i in range(0, len(t_obs_vals)):
             total_freqs = np.concatenate([freqs, ic_freqs[ic_freqs>np.max(freqs)]])
             total_nu_Fnu = np.concatenate([nu_Fnu, (ic_freqs[ic_freqs>np.max(freqs)]*ic_fluxes[ic_freqs>np.max(freqs)])])
 
-            plt.plot(total_freqs, total_nu_Fnu, '--', color=colorFader(c1, c2, i/N), label=f't = {t_obs_vals[i]:.0f} s; IC')
+            #plt.plot(total_freqs, total_nu_Fnu, '--', color=colorFader(c1, c2, i/N), label=f't = {t_obs_vals[i]:.0f} s; IC')
 
-        #plt.plot(freqs, fluxes, color='blue', label=f't = {t_obs_lin_vals[i]/(60):.0f} minutes; Sync')
-        #plt.plot(ic_freqs, ic_fluxes, '--', color='red', label=f't = {t_obs_lin_vals[i]/(60):.0f} minutes; IC')
+        plt.plot(freqs, fluxes, color=colorFader(c1, c2, i/N), label=f't = {t_obs_vals[i]:.0f} s; Sync')
+        plt.plot(ic_freqs, ic_fluxes, '--', color=colorFader(c1, c2, i/N), label=f't = {t_obs_vals[i]:.0f} s; IC')
 
         #plt.plot(freqs, fluxes, color=colorFader(c1, c2, i/N), label=f't = {t_obs_vals[i]/(60):.0f} minutes; Sync')
 
@@ -395,25 +393,24 @@ for i in range(0, len(t_obs_vals)):
 plt.xscale('log')
 plt.yscale('log')
 plt.xlabel(r'$\nu$ [Hz]')
-#plt.ylabel('Flux [mJy]')
+plt.ylabel('Flux [mJy]')
 #plt.ylabel(r'Normalised $\nu$F$_\nu$')
-plt.ylabel(r'$\nu$F$_\nu$ [mJy Hz]')
+#plt.ylabel(r'$\nu$F$_\nu$ [mJy Hz]')
 #plt.ylabel(r'$\nu$F$_{\nu}$ / $\nu_c$F$_{\nu_c}$')
 plt.legend(loc='lower left')
 plt.show()
 '''
 
+'''
+# LIGHTCURVES - SAME GRADIENTS REGARDLESS OF F OR NU*F EXCEPT WHEN SYNC AND SSC ARE ADDED TOGETHER
 
-# LIGHTCURVES - SAME GRADIENTS REGARDLESS OF F OR NU*F
-
-lightcurve_freq = 1E18
+lightcurve_freq = 1E24
 lightcurve_times = []
 lightcurve_fluxes = []
 
 plt.figure(6)
 for i in range(0, len(t_obs_vals)):
     if i % 100 == 0:
-        # If in fast cooling regime
         if nu_c_obs_vals[i] < nu_m_obs_vals[i]:
             low_freq_vals = np.geomspace(1E10, nu_c_obs_vals[i], 10000)
             middle_freq_vals = np.geomspace(nu_c_obs_vals[i], nu_m_obs_vals[i], 10000)
@@ -422,6 +419,25 @@ for i in range(0, len(t_obs_vals)):
             low_freq_fluxes = np.array((low_freq_vals/nu_c_obs_vals[i])**(1/3)*F_max_obs_in_mjy[i])
             middle_freq_fluxes = np.array((middle_freq_vals/nu_c_obs_vals[i])**(-1/2)*F_max_obs_in_mjy[i])
             high_freq_fluxes = np.array((nu_m_obs_vals[i]/nu_c_obs_vals[i])**(-1/2)*(high_freq_vals/nu_m_obs_vals[i])**(-p/2)*F_max_obs_in_mjy[i])
+
+            # If IC is relevant, define that part of the spectrum
+            if epsilon_e > epsilon_B:
+                nu_kn = (2*gamma_vals[i]*m_e*c**2) / (gamma_c_vals[i]*h)  # Frequency of the KN cutoff in the observer frame in the fast cooling regime
+
+                low_freq_ic_vals = np.geomspace(1E10*4*gamma_c_vals[i]**2, nu_c_obs_ic_vals[i], 10000)
+                middle_freq_ic_vals = np.geomspace(nu_c_obs_ic_vals[i], nu_m_obs_ic_vals[i], 10000)
+                high_freq_ic_vals = np.geomspace(nu_m_obs_ic_vals[i], nu_max_obs_ic_vals[i], 10000)
+
+                low_freq_ic_fluxes = np.array((low_freq_ic_vals/nu_c_obs_ic_vals[i])**(1/3)*F_max_obs_ic_in_mjy[i])
+                middle_freq_ic_fluxes = np.array((middle_freq_ic_vals/nu_c_obs_ic_vals[i])**(-1/2)*F_max_obs_ic_in_mjy[i])
+                high_freq_ic_fluxes = np.array((nu_m_obs_ic_vals[i]/nu_c_obs_ic_vals[i])**(-1/2)*(high_freq_ic_vals/nu_m_obs_ic_vals[i])**(-p/2)*F_max_obs_ic_in_mjy[i])
+
+                # Determine the corresponding frequency of the KN cutoff in the IC spectrum
+                if nu_kn < np.max(middle_freq_vals):
+                    nu_kn_ic = 4 * gamma_c_vals[i]**2 * nu_kn
+
+                elif nu_kn > np.max(middle_freq_vals):
+                    nu_kn_ic = 4 * gamma_m_vals[i]**2 * nu_kn
 
         # If in slow cooling regime
         if nu_c_obs_vals[i] > nu_m_obs_vals[i]:
@@ -433,10 +449,48 @@ for i in range(0, len(t_obs_vals)):
             middle_freq_fluxes = np.array((middle_freq_vals/nu_m_obs_vals[i])**((1-p)/2)*F_max_obs_in_mjy[i])
             high_freq_fluxes = np.array((nu_c_obs_vals[i]/nu_m_obs_vals[i])**((1-p)/2)*(high_freq_vals/nu_c_obs_vals[i])**(-p/2)*F_max_obs_in_mjy[i])
 
+            # If IC is relevant, define that part of the spectrum
+            if Y_vals[i] >= 1:
+                nu_kn = (2*gamma_vals[i]*m_e*c**2) / (gamma_m_vals[i]*h)  # Frequency of the KN cutoff in the observer frame in the slow cooling regime
+
+                low_freq_ic_vals = np.geomspace(1E10*4*gamma_m_vals[i]**2, nu_m_obs_ic_vals[i], 10000)
+                middle_freq_ic_vals = np.geomspace(nu_m_obs_ic_vals[i], nu_c_obs_ic_vals[i], 10000)
+                high_freq_ic_vals = np.geomspace(nu_c_obs_ic_vals[i], nu_max_obs_ic_vals[i], 10000)
+
+                low_freq_ic_fluxes = np.array((low_freq_ic_vals/nu_m_obs_ic_vals[i])**(1/3)*F_max_obs_ic_in_mjy[i])
+                middle_freq_ic_fluxes = np.array((middle_freq_ic_vals/nu_m_obs_ic_vals[i])**((1-p)/2)*F_max_obs_ic_in_mjy[i])
+                high_freq_ic_fluxes = np.array((nu_c_obs_ic_vals[i]/nu_m_obs_ic_vals[i])**((1-p)/2)*(high_freq_ic_vals/nu_c_obs_ic_vals[i])**(-p/2)*F_max_obs_ic_in_mjy[i])
+
+                # Determine the corresponding frequency of the KN cutoff in the IC spectrum
+                if nu_kn < np.max(middle_freq_vals):
+                    nu_kn_ic = 4 * gamma_m_vals[i]**2 * nu_kn
+
+                elif nu_kn > np.max(middle_freq_vals):
+                    nu_kn_ic = 4 * gamma_c_vals[i]**2 * nu_kn
+
         freqs = np.concatenate([low_freq_vals[:-1], middle_freq_vals[:-1], high_freq_vals])
         fluxes = np.concatenate([low_freq_fluxes[:-1], middle_freq_fluxes[:-1], high_freq_fluxes])
+        nu_Fnu = freqs * fluxes
 
-        flux_interp = interp1d(np.log10(freqs), np.log10(fluxes))
+        if Y_vals[i] >= 1:
+            ic_freqs = np.concatenate([low_freq_ic_vals[:-1], middle_freq_ic_vals[:-1], high_freq_ic_vals])
+            ic_fluxes = np.concatenate([low_freq_ic_fluxes[:-1], middle_freq_ic_fluxes[:-1], high_freq_ic_fluxes])
+
+            ic_fluxes = ic_fluxes[ic_freqs < nu_kn_ic]
+            ic_freqs = ic_freqs[ic_freqs < nu_kn_ic]
+
+            ic_nu_Fnu = ic_freqs * ic_fluxes
+
+            flux_interp = interp1d(np.log10(ic_freqs), np.log10(ic_fluxes))
+
+            for j in range(0, len(freqs)):
+                if freqs[j] > ic_freqs[0]:
+                    nu_Fnu[j] += (10**flux_interp(np.log10(freqs[j])) * freqs[j])
+
+            total_freqs = np.concatenate([freqs, ic_freqs[ic_freqs>np.max(freqs)]])
+            total_nu_Fnu = np.concatenate([nu_Fnu, (ic_freqs[ic_freqs>np.max(freqs)]*ic_fluxes[ic_freqs>np.max(freqs)])])
+
+        nu_Fnu_interp = interp1d(np.log10(total_freqs), np.log10(total_nu_Fnu))
 
         lightcurve_flux_at_t = flux_interp(np.log10(lightcurve_freq))
 
@@ -450,7 +504,8 @@ plt.plot(times, fluxes, color='blue')
 plt.xscale('log')
 plt.yscale('log')
 plt.xlabel('t [s]')
-plt.ylabel(r'F$_\nu$($\nu$=10$^{16}$ Hz) [mJy]')
+#plt.ylabel(r'$\nu$F$_\nu$($\nu$=10$^{25}$ Hz) [mJy Hz]')
+plt.ylabel(r'F$_\nu$($\nu$=10$^{24}$ Hz) [mJy]')
 plt.show()
 
 plt.figure(7)
@@ -462,7 +517,7 @@ plt.xscale('log')
 plt.xlabel('t [s]')
 plt.ylabel('Lightcurve gradient')
 plt.show()
-
+'''
 '''
 with open('lightcurve_1e15.txt', 'w') as f:
     f.write('Observer time [s], Flux [mJy]')
