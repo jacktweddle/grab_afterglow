@@ -16,13 +16,14 @@ N = 1000  # Number of timesteps
 t_engine_min = 24*60*60  # ENGINE FRAME time at start of simulation in s
 t_engine_max = 30*24*60*60  # ENGINE FRAME time at end of simulation in s
 
-E = 1E53  # Energy injected into GRB in erg
-rho_ref = 1.67E-24  # Reference circumburst medium density in g/cm3
+E = 8.45931341e+56  # Energy injected into GRB in erg
+rho_ref = 1.08739229e-22  # Reference circumburst medium density in g/cm3
 R_ref = 1E19  # Reference radius used to set density profile
-k = 2  # 0 for ISM, 2 for stellar wind, other values invalid
-p = 2.2  # Slope of electron population spectrum
-epsilon_e = 0.3  # Ignorance parameter governing energy fraction put into electrons
-epsilon_B = 0.01  # Ignorance parameter governing energy fraction put into magnetic field
+k = 0  # 0 for ISM, 2 for stellar wind, other values invalid
+p = 2.99484197e+00  # Slope of electron population spectrum
+epsilon_e = 6.19891030e-01  # Ignorance parameter governing energy fraction put into electrons
+epsilon_B = 5.28411826e-01  # Ignorance parameter governing energy fraction put into magnetic field
+epsilon_p = 1 - epsilon_e - epsilon_B  # Ignorance parameter governing energy fraction put into protons
 m_e = 9.11E-28  # Electron mass in g
 q_e = 4.803E-10  # Electron charge in Fr
 sigma_t = 6.6525E-25  # Thomson scattering cross section in cm2
@@ -32,8 +33,12 @@ m_p = 1.67E-24  # Proton mass in g/cm3
 D = 1E28  # Distance to GRB (approx 1 Gly in cm)
 
 
-def plot_spectrum(t, Y, gamma, gamma_m, gamma_c, nu_c, nu_m, nu_max, F_max, nu_c_ic, nu_m_ic, nu_max_ic, F_max_ic):
+def plot_spectrum(t, Y, gamma, gamma_m, gamma_c, nu_c, nu_m, nu_max, F_max, nu_c_ic, nu_m_ic, nu_max_ic, F_max_ic, nu_c_p, nu_m_p, nu_max_p, F_max_p):
     plt.clf()
+    start = time.time()
+
+    print(gamma, gamma_m, gamma_c, nu_m, nu_c)
+
     if nu_c < nu_m:
         low_freq_vals = np.geomspace(nu_c/1000, nu_c, 10000)
         middle_freq_vals = np.geomspace(nu_c, nu_m, 10000)
@@ -74,7 +79,7 @@ def plot_spectrum(t, Y, gamma, gamma_m, gamma_c, nu_c, nu_m, nu_max, F_max, nu_c
 
         # If IC is relevant, define that part of the spectrum
         if epsilon_e > epsilon_B:
-            if Y_vals[i] >= 1:
+            if Y >= 1:
                 nu_kn = (2*gamma*m_e*c**2) / (gamma_m*h)  # Frequency of the KN cutoff in the observer frame in the slow cooling regime
 
                 low_freq_ic_vals = np.geomspace((nu_m/1000)*4*gamma_m**2, nu_m_ic, 10000)
@@ -94,36 +99,68 @@ def plot_spectrum(t, Y, gamma, gamma_m, gamma_c, nu_c, nu_m, nu_max, F_max, nu_c
 
     freqs = np.concatenate([low_freq_vals[:-1], middle_freq_vals[:-1], high_freq_vals])
     fluxes = np.concatenate([low_freq_fluxes[:-1], middle_freq_fluxes[:-1], high_freq_fluxes])
+
+    fluxes = fluxes[freqs < nu_max]
+    freqs = freqs[freqs < nu_max]
+
     nu_Fnu = freqs * fluxes
 
+    low_freq_p_vals = np.geomspace(nu_m_p/1000, nu_m_p, 10000)
+    middle_freq_p_vals = np.geomspace(nu_m_p, nu_c_p, 10000)
+    high_freq_p_vals = np.geomspace(nu_c_p, nu_max_p, 10000)
+
+    low_freq_p_fluxes = np.array((low_freq_p_vals/nu_m_p)**(1/3)*F_max_p)
+    middle_freq_p_fluxes = np.array((middle_freq_p_vals/nu_m_p)**((1-p)/2)*F_max_p)
+    high_freq_p_fluxes = np.array((nu_c_p/nu_m_p)**((1-p)/2)*(high_freq_p_vals/nu_c_p)**(-p/2)*F_max_p)
+
+    proton_freqs = np.concatenate([low_freq_p_vals[:-1], middle_freq_p_vals[:-1], high_freq_p_vals])
+    proton_fluxes = np.concatenate([low_freq_p_fluxes[:-1], middle_freq_p_fluxes[:-1], high_freq_p_fluxes])
+
+    proton_fluxes = proton_fluxes[proton_freqs < nu_max_p]
+    proton_freqs = proton_freqs[proton_freqs < nu_max_p]
+
+    p_flux_interp = interp1d(np.log10(proton_freqs), np.log10(proton_fluxes))
+
+    for j in range(0, len(freqs)):
+        if (freqs[j] > proton_freqs[0]) and (freqs[j] < proton_freqs[-1]):
+            nu_Fnu[j] += (10**p_flux_interp(np.log10(freqs[j])) * freqs[j])
+
+    total_freqs = np.concatenate([proton_freqs[proton_freqs < np.min(freqs)], freqs, proton_freqs[proton_freqs > np.max(freqs)]])
+    total_nu_Fnu = np.concatenate([(proton_freqs[proton_freqs < np.min(freqs)]*proton_fluxes[proton_freqs < np.min(freqs)]), nu_Fnu, (proton_freqs[proton_freqs > np.max(freqs)]*proton_fluxes[proton_freqs > np.max(freqs)])])
+
     if epsilon_e > epsilon_B:
-        if Y_vals[i] >= 1:
+        if Y >= 1:
             ic_freqs = np.concatenate([low_freq_ic_vals[:-1], middle_freq_ic_vals[:-1], high_freq_ic_vals])
             ic_fluxes = np.concatenate([low_freq_ic_fluxes[:-1], middle_freq_ic_fluxes[:-1], high_freq_ic_fluxes])
 
             ic_fluxes = ic_fluxes[ic_freqs < nu_kn_ic]
             ic_freqs = ic_freqs[ic_freqs < nu_kn_ic]
 
-            flux_interp = interp1d(np.log10(ic_freqs), np.log10(ic_fluxes))
+            ic_flux_interp = interp1d(np.log10(ic_freqs), np.log10(ic_fluxes))
 
-            for j in range(0, len(freqs)):
-                if freqs[j] > ic_freqs[0]:
-                    nu_Fnu[j] += (10**flux_interp(np.log10(freqs[j])) * freqs[j])
+            for k in range(0, len(total_freqs)):
+                if (total_freqs[k] > ic_freqs[0]) and (total_freqs[k] < ic_freqs[-1]):
+                    total_nu_Fnu[k] += (10**ic_flux_interp(np.log10(total_freqs[k])) * total_freqs[k])
 
-            total_freqs = np.concatenate([freqs, ic_freqs[ic_freqs > np.max(freqs)]])
-            total_nu_Fnu = np.concatenate([nu_Fnu, (ic_freqs[ic_freqs > np.max(freqs)]*ic_fluxes[ic_freqs > np.max(freqs)])])
+            total_nu_Fnu = np.concatenate([total_nu_Fnu, (ic_freqs[ic_freqs > np.max(total_freqs)]*ic_fluxes[ic_freqs > np.max(total_freqs)])])
+            total_freqs = np.concatenate([total_freqs, ic_freqs[ic_freqs > np.max(total_freqs)]])
 
-            plt.plot(total_freqs, total_nu_Fnu, '--', color='blue')
+    print(time.time()-start)
 
-    elif epsilon_e < epsilon_B:
+    plt.plot(total_freqs, total_nu_Fnu, color='blue', label='Total')
+    plt.plot(freqs, freqs*fluxes, '--', color='red', label='Electron sync')
+    plt.plot(proton_freqs, proton_freqs*proton_fluxes, '--', color='green', label='Proton sync')
 
-        plt.plot(total_freqs, total_nu_Fnu, '--', color='blue')
+    if epsilon_e > epsilon_B:
+        if Y >= 1:
+            plt.plot(ic_freqs, ic_freqs*ic_fluxes, '--', color='purple', label='SSC')
 
     plt.title(f't = {t_obs_vals[t]:.0f} s')
     plt.xscale('log')
     plt.yscale('log')
     plt.xlabel(r'$\nu$ [Hz]')
     plt.ylabel(r'$\nu$F$_\nu$ [mJy Hz]')
+    plt.legend()
 
     return plt
 
@@ -131,7 +168,8 @@ def plot_spectrum(t, Y, gamma, gamma_m, gamma_c, nu_c, nu_m, nu_max, F_max, nu_c
 def animate(t):
     plot_spectrum(t, Y_vals[t], gamma_vals[t], gamma_m_vals[t], gamma_c_vals[t], nu_c_obs_vals[t],
                   nu_m_obs_vals[t], nu_max_obs_vals[t], F_max_obs_in_mjy[t], nu_c_obs_ic_vals[t],
-                  nu_m_obs_ic_vals[t], nu_max_obs_ic_vals[t], F_max_obs_ic_in_mjy[t])
+                  nu_m_obs_ic_vals[t], nu_max_obs_ic_vals[t], F_max_obs_ic_in_mjy[t], nu_c_p_obs_vals[t],
+                  nu_m_p_obs_vals[t], nu_max_p_obs_vals[t], F_max_p_obs_in_mjy[t])
 
 
 # Define function to plug into f_solve to find a root
@@ -287,6 +325,17 @@ if epsilon_e > epsilon_B:
     nu_m_obs_ic_spl = CubicSpline(t_obs_vals, nu_m_obs_ic_vals)
     nu_c_obs_ic_spl = CubicSpline(t_obs_vals, nu_c_obs_ic_vals)
     nu_max_obs_ic_spl = CubicSpline(t_obs_vals, nu_max_obs_ic_vals)
+
+# Proton synchrotron spectrum
+
+nu_m_p_obs_vals = nu_m_obs_vals * (epsilon_p/epsilon_e)**2 * (m_e/m_p)**3
+nu_c_p_obs_vals = nu_c_obs_vals * (m_p/m_e)**5
+nu_max_p_obs_vals = nu_max_obs_vals * (m_p/m_e)**3
+F_max_p_obs_in_mjy = F_max_obs_in_mjy * (m_e/m_p)
+
+nu_m_p_obs_spl = CubicSpline(t_obs_vals, nu_m_p_obs_vals)
+nu_c_p_obs_spl = CubicSpline(t_obs_vals, nu_c_p_obs_vals)
+nu_max_p_obs_spl = CubicSpline(t_obs_vals, nu_max_p_obs_vals)
 
 
 # Plotting
@@ -662,4 +711,4 @@ plt.show()
 
 anim = animation.FuncAnimation(plt.figure(), animate, interval=1, frames=len(t_obs_vals), repeat=False)
 
-anim.save("spectrum_stellar_wind.gif", writer=writergif)
+anim.save("test.gif", writer=writergif)
